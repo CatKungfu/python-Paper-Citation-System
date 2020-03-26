@@ -1,0 +1,122 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*- 
+import requests
+import MySQLdb
+import linecache
+import random,os
+from operator import itemgetter
+from bs4 import BeautifulSoup
+from tkinter import *
+import colfilalgo
+
+def on_click():
+    keywords='通信' ### 查询的主题 
+    keywords=entry.get()
+    n=0
+    num=150 #n为搜索的文献数，num为参考文献字符串长度
+    impact=0.8#影响因子
+    score=10#总分为10构建打分矩阵
+    target='http://search.cnki.net/search.aspx?q='+str(keywords)+'&rank=relevant&cluster=all&val=CJFDTOTAL&p={}'#知网检索
+    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36'
+    headers = {'User-Agent':user_agent}
+    myfile=open('sourcedata.txt','w',encoding='utf-8')
+    outfile=open('resultdata.txt','w',encoding='utf-8')
+    for i in range(10):
+        i=i*15
+        target=target.format(i)
+        req=requests.get(url=target)
+        html=req.text
+        html=html.replace('<br>',' ').replace('<br/>',' ').replace('/>','>')
+        bf=BeautifulSoup(html,"html.parser")
+        texts=bf.find('div',class_='articles')
+        texts_div=texts.find_all('div',class_='wz_content')
+        for item in texts_div:
+            item_name=item.find('a').text
+            item_href=item.find('a')['href']
+            req2=requests.get(url=item_href)
+            html2=req2.text
+            html2=html2.replace('<br>',' ').replace('<br/>',' ').replace('/>','>')
+            bf2=BeautifulSoup(html2,"html.parser")
+            text2=bf2.find('div',class_='node_item')
+            item_refer=item.find_all('td',style_='line-height:1.8em')
+            c=''
+            for j in item_refer:
+                item_min=j.find('a').text
+                if item_min==item_name:
+                    c+='1'
+                else:
+                    c+='0'
+            xnum=random.randint(1,num/5)
+            a = [0 for x in range(num-xnum)]+[1 for x in range(xnum)]
+            random.shuffle(a)
+            for j in range(len(a)):
+                if j==n:
+                    c+='0'
+                    continue
+                if a[j]==1:c+='1'
+                if a[j]==0:c+='0'
+            item_refer2=item.find('span',class_='count').text
+            num1=item_refer2[item_refer2.find('（')+1:item_refer2.find('）')]
+            if num1=='':num1='0'
+            num2=item_refer2[item_refer2.rfind('（')+1:item_refer2.rfind('）')]
+            if num2=='':num2='0'
+            print('{} {} {}\n'.format(item_name,item_href,item_refer2))
+            myfile.write(str(n)+' '+item_name+' '+num1+' '+num2+' '+ c +'\n')
+            n+=1
+    myfile.close()
+    content=linecache.getlines('sourcedata.txt')
+    listt=[["","","","","",""]for i in range(n)]
+    colfilalgo.cff=str(listt)
+    for i in range(n):
+        string=content[i]
+        a1=string.find(' ')#
+        listt[i][0]=string[:a1]
+        string=string[a1+1:]
+        a2=string.find(' ')#
+        listt[i][1]=string[:a2]
+        string=string[a2+1:]
+        a3=string.find(' ')#
+        listt[i][2]=int(string[:a3])
+        string=string[a3+1:]
+        a4=string.find(' ')#
+        listt[i][3]=int(string[:a4])
+        string=string[a4+1:]
+        a5=string.find(' ')#
+        listt[i][4]=string[:a5]
+        listt[i][5]=score-float(1/(0.2*(listt[i][2]+1))+1/((impact-0.2)*(listt[i][3]+1)))#可控制下载矩阵和引用矩阵的影响因子
+    content2=sorted(listt,key=(lambda x:x[5]),reverse=True)
+    content3=[[""]for i in range(10)]
+    k=0
+    for i in range(n):
+        if i==0:
+            strmid=content2[i][1]
+            content3[k][0]=str(k+1)+" "+content2[i][1]
+            k+=1
+        else:
+            if content2[i][1]!=strmid:
+                strmid=content2[i][1]
+                content3[k][0]=str(k+1)+" "+content2[i][1]
+                k+=1
+            else:
+                continue
+        if k==10:
+            break
+    #print(content2)
+    outfile.write(str(content2))
+    outfile.close()
+    message['text']='论文推荐：\n'
+    for item in content3:
+        message['text']+=str(item)+'\n'
+    #os.system("mysql.py")
+    print("论文总数为：%d"%n)
+
+if __name__=="__main__":
+    root=Tk(className='论文推荐系统')
+    #root.geometry('400x300') 
+    message = Message(root,text='请输入论文主题：')   
+    message.pack()
+    entry=Entry(root)
+    entry.pack()
+    button = Button(root,text='查询',command=on_click)
+    button.pack()
+    mainloop()
